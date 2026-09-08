@@ -21,6 +21,7 @@ SHOP   = "https://www.patreon.com/c/securesupplies/shop"
 JOIN   = "https://www.patreon.com/c/securesupplies"
 ROOT   = pathlib.Path(__file__).resolve().parent
 GA_ID  = (ROOT / "ga_id.txt").read_text().strip() if (ROOT / "ga_id.txt").exists() else ""
+INDEXNOW_KEY = "a7f3c91e5b2d4816be0d7c4a9f16e35b"
 
 CATS = [
  ('ECU / Speeduino / Hydrogen Hot Rod', 'ecu-speeduino-hydrogen-hot-rod', r'speeduino|speedunio|hyduino|core8|teensy|can hub|canpico|egt|map/baro|miata|honda|m50|m52|m60|drop bear|ignitor|stim|\becu\b|ardu-stim|molex|dbw|auxiliary outputs',
@@ -133,8 +134,12 @@ def ga():
             '<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}'
             'gtag("js",new Date());gtag("config","%s");</script>') % (GA_ID, GA_ID)
 
-def shell(title, desc, canonical, body, jsonld=None, extra_head=""):
-    ld = ('<script type="application/ld+json">%s</script>' % json.dumps(jsonld, separators=(',', ':'))) if jsonld else ''
+def shell(title, desc, canonical, body, jsonld=None, extra_head="", image=None):
+    if isinstance(jsonld, list):
+        ld = ''.join('<script type="application/ld+json">%s</script>' % json.dumps(j, separators=(',', ':')) for j in jsonld)
+    else:
+        ld = ('<script type="application/ld+json">%s</script>' % json.dumps(jsonld, separators=(',', ':'))) if jsonld else ''
+    img = ('<meta property="og:image" content="%s">\n<meta name="twitter:image" content="%s">\n' % (image, image)) if image else ''
     return f"""<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(title)}</title>
@@ -146,13 +151,31 @@ def shell(title, desc, canonical, body, jsonld=None, extra_head=""):
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Secure Supplies Open Hardware">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="robots" content="index,follow,max-image-preview:large">
+{img}<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
 {extra_head}<style>{CSS}</style>{ga()}{ld}</head><body>
 {body}
 <footer><div class="wrap">Secure Supplies Group / Donatelli LLC ·
 <a href="https://securesupplies.us">securesupplies.us</a> · 24/7 Desk (520) 435-1881 ·
 Fuel Desk (818) 922-4583 · <a href="{SITE}/sitemap.xml">Sitemap</a></div></footer>
 </body></html>"""
+
+def rss(boards, today):
+    items = []
+    for b in boards[:60]:
+        items.append(
+            "<item><title>%s</title><link>%s%s</link><guid isPermaLink=\"true\">%s%s</guid>"
+            "<description>%s</description><category>%s</category></item>"
+            % (html.escape(b["title"]), SITE, b["path"], SITE, b["path"],
+               html.escape(trim(b.get("desc") or b["cblurb"], 300)), html.escape(b["cat"])))
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<rss version="2.0"><channel>'
+            '<title>Secure Supplies — Open Hardware Index</title>'
+            '<link>%s/</link>'
+            '<description>Stanley Meyer water fuel cell, VIC, GMS, gas processor and Hydrogen Hot Rod boards. '
+            'Gerbers open, order direct from PCBWay.</description>'
+            '<language>en</language><lastBuildDate>%s</lastBuildDate>%s</channel></rss>'
+            % (SITE, today, "".join(items)))
+
 
 def card(b):
     return (f'<a class="card" href="{SITE}{b["path"]}">'
@@ -198,7 +221,7 @@ def main():
     (ROOT / "b").mkdir(exist_ok=True)
     (ROOT / "c").mkdir(exist_ok=True)
     today = datetime.date.today().isoformat()
-    urls = [(SITE + "/", "1.0")]
+    urls = [(SITE + "/", "1.0", None, None)]  # image filled after boards load
 
     # ---- board pages
     for b in boards:
@@ -207,6 +230,12 @@ def main():
             f'Gerbers are published on PCBWay; order the bare board direct.')
         meta = trim(b["desc"], 155) or f'{b["title"]} — gerbers and PCB, order direct from PCBWay.'
         paras = "".join('<p>%s</p>' % html.escape(x) for x in re.split(r'(?<=[.!?]) (?=[A-Z])', long) if x.strip())
+        related = [r for r in boards if r["cslug"] == b["cslug"] and r["id"] != b["id"]][:8]
+        rel_html = ("".join('<li><a href="%s%s">%s</a></li>' % (SITE, r["path"], html.escape(r["title"])) for r in related))
+        crumbs = {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+            {"@type": "ListItem", "position": 1, "name": "Open Hardware Index", "item": SITE + "/"},
+            {"@type": "ListItem", "position": 2, "name": b["cat"], "item": "%s/c/%s.html" % (SITE, b["cslug"])},
+            {"@type": "ListItem", "position": 3, "name": b["title"], "item": SITE + b["path"]}]}
         jsonld = {"@context": "https://schema.org", "@type": "Product",
                   "name": b["title"], "image": [b["image"]], "description": meta,
                   "brand": {"@type": "Brand", "name": "Secure Supplies"},
@@ -224,11 +253,15 @@ def main():
 <a class="buy alt" href="{JOIN}" rel="noopener">Schematics &amp; build support</a></p>
 <h2>About this board</h2>
 <p>{html.escape(b['cblurb'])} The gerbers are open — order one board or fifty, at PCBWay's price. Secure Supplies sells the build manuals, wound VIC assemblies, kits and direct build support.</p>
+<h2>More {html.escape(b['cat'])}</h2>
+<ul>{rel_html}</ul>
+<p><a href="{SITE}/c/{b['cslug']}.html">All {html.escape(b['cat'])} →</a> &nbsp;|&nbsp; <a href="{SITE}/">Full hardware index →</a></p>
 </article></div>"""
         (ROOT / b["path"].lstrip("/")).write_text(
-            shell(f'{b["title"]} — Gerbers & PCB | Secure Supplies', meta, SITE + b["path"], body, jsonld),
+            shell(f'{b["title"]} — Gerbers & PCB | Secure Supplies', meta, SITE + b["path"], body,
+                  [jsonld, crumbs], image=b["image"]),
             encoding="utf-8")
-        urls.append((SITE + b["path"], "0.8"))
+        urls.append((SITE + b["path"], "0.8", b["image"], b["title"]))
 
     # ---- category pages
     cats = {}
@@ -241,7 +274,7 @@ def main():
         (ROOT / "c" / (cslug + ".html")).write_text(
             shell(f'{cname} — Stanley Meyer Open Hardware | Secure Supplies',
                   trim(cblurb, 155), f'{SITE}/c/{cslug}.html', body), encoding="utf-8")
-        urls.append((f'{SITE}/c/{cslug}.html', "0.7"))
+        urls.append((f'{SITE}/c/{cslug}.html', "0.7", None, None))
 
     # ---- home
     chips = "".join(f'<a class="chip" href="{SITE}/c/{s}.html">{html.escape(n)} ({len(v)})</a>'
@@ -269,20 +302,62 @@ document.getElementById('q').oninput=e=>{{const q=e.target.value.toLowerCase();l
 cards.forEach(c=>{{const s=!q||c.t.includes(q);c.el.style.display=s?'':'none';if(s)n++;}});
 document.getElementById('count').textContent=n+' of {len(boards)} boards';}};
 </script>"""
+    org = {"@context": "https://schema.org", "@type": "Organization",
+           "name": "Secure Supplies Group", "alternateName": "Secure Supplies Group / Donatelli LLC",
+           "url": SITE + "/", "telephone": "+1-520-435-1881",
+           "sameAs": ["https://securesupplies.us", JOIN,
+                      "https://www.pcbway.com/project/member/?bmbno=" + BMBNO]}
+    website = {"@context": "https://schema.org", "@type": "WebSite",
+               "name": "Secure Supplies Open Hardware Index", "url": SITE + "/",
+               "potentialAction": {"@type": "SearchAction",
+                                   "target": SITE + "/?q={search_term_string}",
+                                   "query-input": "required name=search_term_string"}}
     (ROOT / "index.html").write_text(
         shell("Secure Supplies — Open Hardware Index | Stanley Meyer PCBs, Gerbers & 3D Parts",
               f"{len(boards)} open hardware boards, gerbers and printed parts — Stanley Meyer water fuel cell, VIC, GMS, gas processor and Hydrogen Hot Rod ECU. Order any bare PCB direct from PCBWay.",
-              SITE + "/", body, itemlist), encoding="utf-8")
+              SITE + "/", body, [itemlist, org, website],
+              image=boards[0]["image"] if boards else None), encoding="utf-8")
 
     # ---- sitemap + robots
     sm = ['<?xml version="1.0" encoding="UTF-8"?>',
-          '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
-    for u, pri in urls:
-        sm.append(f'<url><loc>{u}</loc><lastmod>{today}</lastmod><priority>{pri}</priority></url>')
+          '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" '
+          'xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">']
+    for u, pri, img, cap in urls:
+        img_x = ('<image:image><image:loc>%s</image:loc><image:title>%s</image:title></image:image>'
+                 % (html.escape(img), html.escape(cap))) if img else ''
+        sm.append(f'<url><loc>{u}</loc><lastmod>{today}</lastmod><priority>{pri}</priority>{img_x}</url>')
     sm.append('</urlset>')
     (ROOT / "sitemap.xml").write_text("\n".join(sm), encoding="utf-8")
     (ROOT / "robots.txt").write_text(
-        f"User-agent: *\nAllow: /\n\nSitemap: {SITE}/sitemap.xml\n", encoding="utf-8")
+        "User-agent: *\nAllow: /\n\n"
+        "User-agent: Googlebot\nAllow: /\n\n"
+        "User-agent: Googlebot-Image\nAllow: /\n\n"
+        "User-agent: Bingbot\nAllow: /\n\n"
+        "User-agent: Slurp\nAllow: /\n\n"
+        "User-agent: DuckDuckBot\nAllow: /\n\n"
+        "User-agent: YandexBot\nAllow: /\n\n"
+        "User-agent: Baiduspider\nAllow: /\n\n"
+        "User-agent: Applebot\nAllow: /\n\n"
+        "User-agent: PinterestBot\nAllow: /\n\n"
+        f"Sitemap: {SITE}/sitemap.xml\n", encoding="utf-8")
+    (ROOT / "feed.xml").write_text(rss(boards, today), encoding="utf-8")
+
+    # ---- IndexNow: instant submission to Bing, Yandex, Naver, Seznam
+    (ROOT / (INDEXNOW_KEY + ".txt")).write_text(INDEXNOW_KEY, encoding="utf-8")
+    try:
+        payload = json.dumps({
+            "host": SITE.replace("https://", ""),
+            "key": INDEXNOW_KEY,
+            "keyLocation": "%s/%s.txt" % (SITE, INDEXNOW_KEY),
+            "urlList": [u for u, _p, _i, _c in urls][:10000],
+        }).encode()
+        req = urllib.request.Request("https://api.indexnow.org/indexnow", data=payload,
+                                     headers={"Content-Type": "application/json; charset=utf-8",
+                                              "User-Agent": UA["User-Agent"]})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            print("IndexNow: HTTP %s for %d urls" % (r.status, len(urls)))
+    except Exception as e:
+        print("IndexNow ping failed (non-fatal): %s" % e)
 
     print("built %d board pages, %d category pages, %d sitemap urls"
           % (len(boards), len(cats), len(urls)))
