@@ -307,7 +307,19 @@ document.getElementById('count').textContent=n+' of {len(boards)} boards';}};
            "name": "Secure Supplies Group", "alternateName": "Secure Supplies Group / Donatelli LLC",
            "url": SITE + "/", "telephone": "+1-520-435-1881",
            "sameAs": ["https://securesupplies.us", JOIN,
-                      "https://www.pcbway.com/project/member/?bmbno=" + BMBNO]}
+                      "https://www.pcbway.com/project/member/?bmbno=" + BMBNO,
+                      "https://github.com/SecureSupplies",
+                      "https://www.youtube.com/@SecureSuppliesLimited",
+                      "https://www.youtube.com/@DanielDonatelli",
+                      "https://www.youtube.com/@SecureSuppliesChina",
+                      "https://www.youtube.com/@HidrogenoEspana",
+                      "https://www.youtube.com/@SecureSuppliesPortuguese-fz7zf",
+                      "https://www.youtube.com/@Securesupplieshindi",
+                      "https://twitter.com/SecureSupplies",
+                      "https://www.tiktok.com/@securesupplies",
+                      "https://www.instagram.com/danieldonatelli1/",
+                      "https://securesupplies.blogspot.com/",
+                      "https://securesuppliesusasupply.wordpress.com/"]}
     website = {"@context": "https://schema.org", "@type": "WebSite",
                "name": "Secure Supplies Open Hardware Index", "url": SITE + "/",
                "potentialAction": {"@type": "SearchAction",
@@ -340,8 +352,49 @@ document.getElementById('count').textContent=n+' of {len(boards)} boards';}};
         "User-agent: Baiduspider\nAllow: /\n\n"
         "User-agent: Applebot\nAllow: /\n\n"
         "User-agent: PinterestBot\nAllow: /\n\n"
-        f"Sitemap: {SITE}/sitemap.xml\n", encoding="utf-8")
+        "User-agent: GPTBot\nAllow: /\n\n"
+        "User-agent: OAI-SearchBot\nAllow: /\n\n"
+        "User-agent: ChatGPT-User\nAllow: /\n\n"
+        "User-agent: ClaudeBot\nAllow: /\n\n"
+        "User-agent: Claude-User\nAllow: /\n\n"
+        "User-agent: Claude-SearchBot\nAllow: /\n\n"
+        "User-agent: PerplexityBot\nAllow: /\n\n"
+        "User-agent: Perplexity-User\nAllow: /\n\n"
+        "User-agent: Google-Extended\nAllow: /\n\n"
+        "User-agent: Applebot-Extended\nAllow: /\n\n"
+        "User-agent: Amazonbot\nAllow: /\n\n"
+        "User-agent: meta-externalagent\nAllow: /\n\n"
+        "User-agent: CCBot\nAllow: /\n\n"
+        f"Sitemap: {SITE}/sitemap.xml\n"
+        f"# AI index: {SITE}/llms.txt\n", encoding="utf-8")
     (ROOT / "feed.xml").write_text(rss(boards, today), encoding="utf-8")
+
+    # ---- llms.txt: machine-readable index for AI search engines
+    ll = ["# Secure Supplies \u2014 Open Hardware Index", "",
+          "> %d open hardware boards, gerbers and printed parts for the Stanley Meyer water fuel cell, "
+          "VIC magnetics, GMS control cards, gas processor and Hydrogen Hot Rod engine management. "
+          "Every gerber is published open; bare PCBs are ordered direct from PCBWay at PCBWay price. "
+          "Secure Supplies Group (Donatelli LLC) supplies the build manuals, wound VIC assemblies, "
+          "kits and direct build support." % len(boards), "",
+          "Operator: Secure Supplies Group / Donatelli LLC, https://securesupplies.us",
+          "Desk: +1-520-435-1881 (24/7) | Fuel desk: +1-818-922-4583",
+          "Order bare boards: https://www.pcbway.com/project/member/?bmbno=" + BMBNO,
+          "Manuals and kits: " + SHOP,
+          "Schematics and build support: " + JOIN, "",
+          "## Categories", ""]
+    catlist = [(c[0], c[1], c[3]) for c in CATS] + [(OTHER[0], OTHER[1], OTHER[2])]
+    for cname, cslug, cblurb in catlist:
+        n = sum(1 for b in boards if b["cslug"] == cslug)
+        if n:
+            ll.append("- [%s](%s/c/%s.html): %s (%d boards)" % (cname, SITE, cslug, cblurb, n))
+    ll += ["", "## Boards", ""]
+    for b in boards:
+        ll.append("- [%s](%s%s): %s. %s views on PCBWay. Order the bare board at %s"
+                  % (b["title"], SITE, b["path"], b["cat"], b["views"], b["pcb"]))
+    ll += ["", "## Optional", "",
+           "- [RSS feed](%s/feed.xml): new boards as they are published" % SITE,
+           "- [XML sitemap](%s/sitemap.xml): every page, with board images" % SITE]
+    (ROOT / "llms.txt").write_text("\n".join(ll) + "\n", encoding="utf-8")
 
     # ---- IndexNow: instant submission to Bing, Yandex, Naver, Seznam
     (ROOT / (INDEXNOW_KEY + ".txt")).write_text(INDEXNOW_KEY, encoding="utf-8")
